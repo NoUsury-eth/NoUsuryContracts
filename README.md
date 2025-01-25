@@ -1,13 +1,14 @@
-# Sample Hardhat Project
+# NoUsury.eth Smart Contracts
 
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a Hardhat Ignition module that deploys that contract.
-
-Try running some of the following tasks:
+This repository holds the smart contracts for the NoUsury.eth project, including the folllowing:
+- NOUToken.sol
+- LoETHToken.sol
+- NouLoanFactory.sol
+- NouLoanImpl.sol
+ 
+To run the tests for this project, do the following commands:
 
 ```shell
-npx hardhat help
+npm install
 npx hardhat test
-REPORT_GAS=true npx hardhat test
-npx hardhat node
-npx hardhat ignition deploy ./ignition/modules/Lock.js
 ```
