@@ -40,9 +40,10 @@ describe("NoUsury Protocol (Ethers v6) - Updated Single-Transaction Flow", funct
     const NouLoanFactoryFactory = await ethers.getContractFactory("NouLoanFactory");
     nouLoanFactory = await NouLoanFactoryFactory.deploy(
       dao.address,            // owner
-      loanImplAddr,          // loanImplementation
       await LOETH.getAddress(),
-      dao.address            // protocolTreasury
+      dao.address,            // protocolTreasury
+      await stETHMock.getAddress(),
+      await nouLoanImpl.getAddress()
     );
     await nouLoanFactory.waitForDeployment();
 
@@ -65,14 +66,14 @@ describe("NoUsury Protocol (Ethers v6) - Updated Single-Transaction Flow", funct
     });
 
     it("NouLoanFactory is configured correctly", async function () {
-      const impl = await nouLoanFactory.loanImplementation();
-      expect(impl).to.equal(await nouLoanImpl.getAddress());
+      const allowedLoanImpl = await nouLoanFactory.allowedLoanImplementations(await nouLoanImpl.getAddress());
+      expect(allowedLoanImpl).to.be.true;
 
       const loEthAddr = await nouLoanFactory.loEth();
       expect(loEthAddr).to.equal(await LOETH.getAddress());
 
-      const allowed = await nouLoanFactory.allowedCollateral(await stETHMock.getAddress());
-      expect(allowed).to.be.true;
+      const allowedCollateral = await nouLoanFactory.allowedCollateral(await stETHMock.getAddress());
+      expect(allowedCollateral).to.be.true;
     });
   });
 
@@ -94,6 +95,7 @@ describe("NoUsury Protocol (Ethers v6) - Updated Single-Transaction Flow", funct
       // 2) We expect the createLoan tx to emit LoanCreated
       const tx = await nouLoanFactory.connect(user).createLoan(
         await stETHMock.getAddress(),
+        await nouLoanImpl.getAddress(),
         depositAmount
       );
 
@@ -103,6 +105,7 @@ describe("NoUsury Protocol (Ethers v6) - Updated Single-Transaction Flow", funct
           user.address,
           anyValue, // We don't know the actual loanAddress yet
           await stETHMock.getAddress(),
+          await nouLoanImpl.getAddress(),
           depositAmount
         );
 
@@ -123,6 +126,7 @@ describe("NoUsury Protocol (Ethers v6) - Updated Single-Transaction Flow", funct
         }
       }
       expect(loanAddress).to.be.properAddress;
+      console.log('loanAddress: ', loanAddress)
 
       // Check user got loETH minted
       const userLoETHBal = await LOETH.balanceOf(user.address);
@@ -136,7 +140,11 @@ describe("NoUsury Protocol (Ethers v6) - Updated Single-Transaction Flow", funct
     it("User can repay part of the loan", async function () {
       // 1) Create loan
       await stETHMock.connect(user).approve(await nouLoanFactory.getAddress(), depositAmount);
-      const tx = await nouLoanFactory.connect(user).createLoan(await stETHMock.getAddress(), depositAmount);
+      const tx = await nouLoanFactory.connect(user).createLoan(
+        await stETHMock.getAddress(),
+        await nouLoanImpl.getAddress(),
+        depositAmount
+      );
 
       // Check event (no log parsing needed if you just trust it works).
       await expect(tx)
@@ -145,6 +153,7 @@ describe("NoUsury Protocol (Ethers v6) - Updated Single-Transaction Flow", funct
           user.address,
           anyValue,
           await stETHMock.getAddress(),
+          await nouLoanImpl.getAddress(),
           depositAmount
         );
 
@@ -184,13 +193,18 @@ describe("NoUsury Protocol (Ethers v6) - Updated Single-Transaction Flow", funct
     it("User can withdraw collateral above outstanding debt", async function () {
       // create loan
       await stETHMock.connect(user).approve(await nouLoanFactory.getAddress(), depositAmount);
-      const tx = await nouLoanFactory.connect(user).createLoan(await stETHMock.getAddress(), depositAmount);
+      const tx = await nouLoanFactory.connect(user).createLoan(
+        await stETHMock.getAddress(),
+        await nouLoanImpl.getAddress(),
+        depositAmount
+      );
       await expect(tx)
         .to.emit(nouLoanFactory, "LoanCreated")
         .withArgs(
           user.address,
           anyValue,
           await stETHMock.getAddress(),
+          await nouLoanImpl.getAddress(),
           depositAmount
         );
 
@@ -230,16 +244,20 @@ describe("NoUsury Protocol (Ethers v6) - Updated Single-Transaction Flow", funct
     it("User can apply yield to pay down the loan", async function () {
       // create loan
       await stETHMock.connect(user).approve(await nouLoanFactory.getAddress(), depositAmount);
-      const tx = await nouLoanFactory.connect(user).createLoan(await stETHMock.getAddress(), depositAmount);
+      const tx = await nouLoanFactory.connect(user).createLoan(
+        await stETHMock.getAddress(),
+        await nouLoanImpl.getAddress(),
+        depositAmount
+      );
       await expect(tx)
         .to.emit(nouLoanFactory, "LoanCreated")
         .withArgs(
           user.address,
           anyValue,
           await stETHMock.getAddress(),
+          await nouLoanImpl.getAddress(),
           depositAmount
         );
-
       // parse logs
       const rcpt = await tx.wait();
       const factoryAddress = await nouLoanFactory.getAddress();
@@ -277,24 +295,25 @@ describe("NoUsury Protocol (Ethers v6) - Updated Single-Transaction Flow", funct
   // Governance / Admin
   // ---------------------------------------------------------
   describe("Governance / Admin", function () {
-    it("Owner (DAO) can update loanImplementation", async function () {
+    it("Owner (DAO) can set allowed loanImplementation", async function () {
       const NouLoanImplFactory = await ethers.getContractFactory("NouLoanImpl");
       const newImpl = await NouLoanImplFactory.deploy();
       await newImpl.waitForDeployment();
       const newImplAddr = await newImpl.getAddress();
 
       await expect(
-        nouLoanFactory.connect(dao).updateLoanImplementation(newImplAddr)
+        nouLoanFactory.connect(dao).setAllowedLoanImplementation(newImplAddr, true)
       )
         .to.emit(nouLoanFactory, "LoanImplementationUpdated")
-        .withArgs(newImplAddr);
+        .withArgs(newImplAddr, true);
 
-      expect(await nouLoanFactory.loanImplementation()).to.equal(newImplAddr);
+      const allowed = await nouLoanFactory.allowedLoanImplementations(await newImpl.getAddress());
+      expect(allowed).to.be.true;
     });
 
-    it("Non-owner cannot update loanImplementation", async function () {
+    it("Non-owner cannot set allowed loanImplementation", async function () {
       await expect(
-        nouLoanFactory.connect(user).updateLoanImplementation(ethers.ZeroAddress)
+        nouLoanFactory.connect(user).setAllowedLoanImplementation(ethers.ZeroAddress, true)
       ).to.be.reverted;
     });
 
