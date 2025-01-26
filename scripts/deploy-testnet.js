@@ -1,6 +1,8 @@
 // scripts/deploy.js
 const { ethers } = require("hardhat");
 
+const baseSepoliaStEthAddress = '0x3e3FE7dBc6B4C189E7128855dD526361c49b40Af'
+
 async function main() {
   const [deployer] = await ethers.getSigners();
   console.log("Deploying contracts with the account:", deployer);
@@ -27,9 +29,10 @@ async function main() {
   const NouLoanFactory = await ethers.getContractFactory("NouLoanFactory");
   const nouLoanFactory = await NouLoanFactory.deploy(
     deployer.address,      // owner (DAO)
-    nouLoanImpl.target,   // loanImplementation
     loETH.target,         // loETH token address
-    deployer.address       // protocolTreasury
+    deployer.address,       // protocolTreasury
+    baseSepoliaStEthAddress, // initially allowed collateral
+    nouLoanImpl.target     // initial loan impl
   );
   await nouLoanFactory.waitForDeployment();
   console.log("NouLoanFactory deployed to:", nouLoanFactory.target);
@@ -40,12 +43,6 @@ async function main() {
   await grantRoleTx.wait();
   console.log("Granted DEFAULT_ADMIN_ROLE to NouLoanFactory in LoETHToken");
 
-
-  // 6. Set allowed collateral 
-  const baseSepoliaStEthAddress = '0x3e3FE7dBc6B4C189E7128855dD526361c49b40Af'
-  const tx = await nouLoanFactory.connect(deployer).setAllowedCollateral(baseSepoliaStEthAddress, true);
-  await tx.wait();
-  console.log("stETH has been whitelisted as collateral.");
 }
 
 main()
