@@ -8,16 +8,24 @@ module.exports = {
     enabled: true
   },
   networks: {
-    sepolia: {
+    "base-sepolia": {
       url: process.env.BASE_SEPOLIA_RPC_URL || "",
       accounts: {
         mnemonic: process.env.MNEMONIC
       },
       chainId: 84532, // Sepolia's Chain ID
     },
+    sepolia: {
+      url: process.env.ETH_SEPOLIA_RPC_URL || "",
+      accounts: {
+        mnemonic: process.env.MNEMONIC
+      },
+      chainId: 11155111, // Sepolia's Chain ID
+    },
   },
   etherscan: {
     apiKey: {
+      sepolia: process.env.ETHERSCAN_API_KEY,
       "base-sepolia": process.env.ETHERSCAN_API_KEY,
     },
     customChains: [
@@ -27,6 +35,14 @@ module.exports = {
         urls: {
           apiURL: "https://base-sepolia.blockscout.com/api",
           browserURL: "https://base-sepolia.blockscout.com"
+        }
+      },
+      {
+        network: "sepolia",
+        chainId: 11155111,
+        urls: {
+          apiURL: "https://eth-sepolia.blockscout.com/api",
+          browserURL: "https://eth-sepolia.blockscout.com"
         }
       }
     ]

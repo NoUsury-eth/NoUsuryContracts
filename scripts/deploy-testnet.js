@@ -1,11 +1,8 @@
 // scripts/deploy.js
 const { ethers } = require("hardhat");
 
-const baseSepoliaStEthAddress = '0x3e3FE7dBc6B4C189E7128855dD526361c49b40Af'
-
 async function main() {
   const [deployer] = await ethers.getSigners();
-  console.log("Deploying contracts with the account:", deployer);
   console.log(deployer.address)
   // 1. Deploy NOUToken
   const NOUToken = await ethers.getContractFactory("NOUToken");
@@ -31,7 +28,7 @@ async function main() {
     deployer.address,      // owner (DAO)
     loETH.target,         // loETH token address
     deployer.address,       // protocolTreasury
-    baseSepoliaStEthAddress, // initially allowed collateral
+    nouToken.target, // initially allowed collateral
     nouLoanImpl.target     // initial loan impl
   );
   await nouLoanFactory.waitForDeployment();
