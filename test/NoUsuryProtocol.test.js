@@ -1,6 +1,5 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-// If you'd like to partially match event args (like loanAddress), import anyValue:
 const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 
 describe("NoUsury Protocol (Ethers v6) - Updated Single-Transaction Flow", function () {
@@ -37,8 +36,8 @@ describe("NoUsury Protocol (Ethers v6) - Updated Single-Transaction Flow", funct
     const loanImplAddr = await nouLoanImpl.getAddress();
 
     // 5) Deploy NouLoanFactory => dao is owner
-    const NouLoanFactoryFactory = await ethers.getContractFactory("NouLoanFactory");
-    nouLoanFactory = await NouLoanFactoryFactory.deploy(
+    const NouLoanFactory = await ethers.getContractFactory("NouLoanFactory");
+    nouLoanFactory = await NouLoanFactory.deploy(
       dao.address,            // owner
       await LOETH.getAddress(),
       dao.address,            // protocolTreasury
@@ -126,7 +125,6 @@ describe("NoUsury Protocol (Ethers v6) - Updated Single-Transaction Flow", funct
         }
       }
       expect(loanAddress).to.be.properAddress;
-      console.log('loanAddress: ', loanAddress)
 
       // Check user got loETH minted
       const userLoETHBal = await LOETH.balanceOf(user.address);
@@ -286,8 +284,8 @@ describe("NoUsury Protocol (Ethers v6) - Updated Single-Transaction Flow", funct
       const newDebt = await loanContract.totalDebt();
       expect(newDebt).to.equal(BigInt(depositAmount) - (BigInt(partialYield)));
 
-      const daoBal = await stETHMock.balanceOf(dao.address);
-      expect(daoBal).to.equal(partialYield);
+      const loanFactoryBal = await stETHMock.balanceOf(await nouLoanFactory.getAddress());
+      expect(loanFactoryBal).to.equal(partialYield);
     });
   });
 
@@ -309,6 +307,22 @@ describe("NoUsury Protocol (Ethers v6) - Updated Single-Transaction Flow", funct
 
       const allowed = await nouLoanFactory.allowedLoanImplementations(await newImpl.getAddress());
       expect(allowed).to.be.true;
+    });
+
+    it("Anyone can harvest yield to treasury", async function () {
+      const NouLoanImplFactory = await ethers.getContractFactory("NouLoanImpl");
+      const newImpl = await NouLoanImplFactory.deploy();
+      await newImpl.waitForDeployment();
+
+      // mint yield
+      const yieldAmount = ethers.parseEther("10");
+      await stETHMock.connect(deployer).mint(nouLoanFactory, yieldAmount);
+
+      await expect(
+        nouLoanFactory.connect(dao).harvestYield(await stETHMock.getAddress())
+      )
+        .to.emit(nouLoanFactory, "YieldHarvested")
+        .withArgs(dao.address, await stETHMock.getAddress(), yieldAmount);
     });
 
     it("Non-owner cannot set allowed loanImplementation", async function () {
