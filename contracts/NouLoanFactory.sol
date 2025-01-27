@@ -24,6 +24,12 @@ contract NouLoanFactory is Ownable {
     event CollateralUpdated(address token, bool allowed);
     event YieldHarvested(address protocolTreasury, address token, uint256 yield);
 
+    error OnlyNouLoanAddress(address caller);
+    error OnlyAllowedCollateral(address token);
+    error OnlyAllowedLoanImplementations(address loanImpl);
+    error MustDepositNonZeroCollateral(uint256 amount);
+    error TransferFailed(address sender, address receiver, address token, uint256 amount);
+
     constructor(
         address _owner,
         address _loEth,
@@ -52,7 +58,7 @@ contract NouLoanFactory is Ownable {
     }
 
     function depositToken(address tokenAddress, uint256 amount) external {
-        require(activeLoans[msg.sender], "Not a NOU loan");
+        if (!activeLoans[msg.sender]) { revert OnlyNouLoanAddress(msg.sender); }
         tokenBalances[tokenAddress] += amount;
         emit TokenBalancesUpdated(tokenAddress, amount);
     }
@@ -61,18 +67,18 @@ contract NouLoanFactory is Ownable {
         uint256 bal = IERC20(tokenAddress).balanceOf(address(this));
         uint256 yield = bal - tokenBalances[tokenAddress];
         bool success = IERC20(tokenAddress).transfer(protocolTreasury, yield);
-        require(success, "Transfer to treasury failed");
+        if (!success) { revert TransferFailed(address(this), protocolTreasury, tokenAddress, yield); }
         emit YieldHarvested(protocolTreasury, tokenAddress, yield);
     }
 
     function createLoan(address _collateralToken, address _loanImplementation, uint256 _depositAmount) external returns (address loanAddress) {
-        require(allowedCollateral[_collateralToken], "Collateral not allowed");
-        require(allowedLoanImplementations[_loanImplementation], "Loan implementation not allowed");
-        require(_depositAmount > 0, "Deposit must be > 0");
+        if (!allowedCollateral[_collateralToken]) { revert OnlyAllowedCollateral(_collateralToken); }
+        if (!allowedLoanImplementations[_loanImplementation]) { revert OnlyAllowedLoanImplementations(_loanImplementation); }
+        if (_depositAmount <= 0) { revert MustDepositNonZeroCollateral(_depositAmount); }
 
         // 1) Transfer stETH from user -> factory
         bool success = IERC20(_collateralToken).transferFrom(msg.sender, address(this), _depositAmount);
-        require(success, "Collateral transfer failed");
+        if (!success) { revert TransferFailed(msg.sender, address(this), _collateralToken, _depositAmount); }
 
         // 2) Clone the loanImplementation
         loanAddress = _loanImplementation.clone();
@@ -91,7 +97,7 @@ contract NouLoanFactory is Ownable {
 
         // 5) Transfer stETH from factory -> loan
         success = IERC20(_collateralToken).transfer(loanAddress, _depositAmount);
-        require(success, "Collateral -> loan transfer failed");
+        if (!success) { revert TransferFailed(address(this), loanAddress, _collateralToken, _depositAmount); }
 
         activeLoans[loanAddress] = true;
 
