@@ -3,6 +3,7 @@ pragma solidity ^0.8.17;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./LoETHToken.sol";
+import "./INouLoanFactory.sol";
 
 contract NouLoanImpl {
     bool private _initialized;
@@ -10,7 +11,7 @@ contract NouLoanImpl {
     address public owner;
     address public collateralToken;
     LoETHToken public loEth;
-    address public protocolTreasury;
+    address public loanFactory;
     uint256 public totalCollateral;
     uint256 public totalDebt;
 
@@ -18,7 +19,7 @@ contract NouLoanImpl {
         address _ownerAddress,
         address _collateralToken,
         address _loEth,
-        address _protocolTreasury,
+        address _loanFactory,
         uint256 _depositAmount
     ) external {
         require(!_initialized, "Already initialized");
@@ -27,7 +28,7 @@ contract NouLoanImpl {
         owner = _ownerAddress;
         collateralToken = _collateralToken;
         loEth = LoETHToken(_loEth);
-        protocolTreasury = _protocolTreasury;
+        loanFactory = _loanFactory;
 
         // The deposit was already pulled from user -> factory,
         // and we haven't yet transferred to the loan. We'll just record the deposit
@@ -71,7 +72,8 @@ contract NouLoanImpl {
         }
 
         totalDebt -= _yieldAmount;
-        bool success = IERC20(collateralToken).transfer(protocolTreasury, _yieldAmount);
-        require(success, "Transfer to treasury failed");
+        bool success = IERC20(collateralToken).transfer(loanFactory, _yieldAmount);
+        require(success, "Transfer to factory failed");
+        INouLoanFactory(loanFactory).depositToken(collateralToken, _yieldAmount);
     }
 }
