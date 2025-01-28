@@ -15,6 +15,13 @@ contract NouLoanImpl {
     uint256 public totalCollateral;
     uint256 public totalDebt;
 
+    error InvalidRepaymentAmount(uint256 amount);
+    error NotOwner(address caller);
+    error InsufficientCollateral(uint256 requestedAmount, uint256 totalCollateral, uint256 totalDebt);
+    error TransferFailed(address sender, address receiver, address token, uint256 amount);
+    error NotEnoughExcessYield(uint256 yieldRequested, uint256 actualYield);
+    error AlreadyInitialized(bool initialized);
+
     function initialize(
         address _ownerAddress,
         address _collateralToken,
@@ -22,50 +29,46 @@ contract NouLoanImpl {
         address _loanFactory,
         uint256 _depositAmount
     ) external {
-        require(!_initialized, "Already initialized");
+        if (_initialized) { revert AlreadyInitialized(_initialized); }
         _initialized = true;
 
         owner = _ownerAddress;
         collateralToken = _collateralToken;
         loEth = LoETHToken(_loEth);
         loanFactory = _loanFactory;
-
-        // The deposit was already pulled from user -> factory,
-        // and we haven't yet transferred to the loan. We'll just record the deposit
         totalCollateral = _depositAmount;
         totalDebt = _depositAmount;
 
-        // Mint loETH to the user as the "loan" debt
         loEth.mint(_ownerAddress, _depositAmount);
     }
 
     function repayLoan(uint256 _amount) external {
-        require(_amount > 0, "Invalid repay amount");
+        if (_amount <= 0) { revert InvalidRepaymentAmount(_amount); }
         require(_amount <= totalDebt, "Exceeds total debt");
 
         // user must have approved loan contract for loEth
         bool success = loEth.transferFrom(msg.sender, address(this), _amount);
-        require(success, "loETH transfer failed");
+        if (!success) { revert TransferFailed(msg.sender, address(this), address(loEth), _amount); }
 
         loEth.burn(address(this), _amount);
         totalDebt -= _amount;
     }
 
     function withdrawCollateral(uint256 _amount) external {
-        require(msg.sender == owner, "Not owner");
-        require(_amount <= totalCollateral - totalDebt, "Insufficient collateral");
+        if (msg.sender != owner) { revert NotOwner(msg.sender); }
+        if (_amount > totalCollateral - totalDebt) { revert InsufficientCollateral(_amount, totalCollateral, totalDebt); }
 
         totalCollateral -= _amount;
         bool success = IERC20(collateralToken).transfer(owner, _amount);
-        require(success, "Collateral transfer failed");
+        if (!success) { revert TransferFailed(address(this), owner, collateralToken, _amount); }
     }
 
     function applyYieldToPayDownLoan(uint256 _yieldAmount) external {
-        require(msg.sender == owner, "Not owner");
+        if (msg.sender != owner) { revert NotOwner(msg.sender); }
 
         uint256 bal = IERC20(collateralToken).balanceOf(address(this));
         uint256 excess = (bal > totalCollateral) ? (bal - totalCollateral) : 0;
-        require(_yieldAmount <= excess, "Not enough yield");
+        if (_yieldAmount > excess) { revert NotEnoughExcessYield(_yieldAmount, excess); }
 
         if (_yieldAmount > totalDebt) {
             _yieldAmount = totalDebt;
@@ -73,7 +76,7 @@ contract NouLoanImpl {
 
         totalDebt -= _yieldAmount;
         bool success = IERC20(collateralToken).transfer(loanFactory, _yieldAmount);
-        require(success, "Transfer to factory failed");
+        if (!success) { revert TransferFailed(address(this), loanFactory, collateralToken, _yieldAmount); }
         INouLoanFactory(loanFactory).depositToken(collateralToken, _yieldAmount);
     }
 }
